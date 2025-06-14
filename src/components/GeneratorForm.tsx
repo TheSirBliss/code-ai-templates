@@ -15,6 +15,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
+import { useMutation } from "@tanstack/react-query"
+import { supabase } from "@/lib/supabase"
+import { Loader2 } from "lucide-react"
 
 const formSchema = z.object({
   businessType: z.string().min(2, {
@@ -42,11 +45,33 @@ export function GeneratorForm() {
     },
   })
 
+  const { mutate, isPending, data, error } = useMutation({
+    mutationFn: (values: z.infer<typeof formSchema>) => {
+      return supabase.functions.invoke('generate-site-ideas', {
+        body: values,
+      })
+    },
+    onSuccess: (response) => {
+      if (response.error) {
+        toast.error("Generation failed.", {
+          description: response.error.message,
+        })
+      } else {
+        toast.success("Concepts generated!", {
+          description: "We've crafted a few ideas for your vision.",
+        })
+        console.log("Generated concepts:", response.data)
+      }
+    },
+    onError: (err) => {
+        toast.error("An unexpected error occurred.", {
+            description: err.message,
+        });
+    },
+  })
+
   function onSubmit(values: z.infer<typeof formSchema>) {
-    console.log("Form values:", values)
-    toast.success("Preferences submitted!", {
-      description: "We've received your vision. Let the magic begin!",
-    })
+    mutate(values)
   }
 
   return (
@@ -119,8 +144,25 @@ export function GeneratorForm() {
             </FormItem>
           )}
         />
-        <Button type="submit" size="lg" className="w-full">Generate My Site</Button>
+        <Button type="submit" size="lg" className="w-full" disabled={isPending}>
+           {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+           {isPending ? "Generating..." : "Generate My Site"}
+        </Button>
       </form>
+       {data?.data && (
+        <div className="mt-8">
+            <h3 className="text-lg font-semibold mb-4">Generated Concepts:</h3>
+            <pre className="p-4 bg-muted rounded-md text-sm overflow-x-auto">
+                {JSON.stringify(data.data, null, 2)}
+            </pre>
+        </div>
+      )}
+       {error && (
+        <div className="mt-4 p-4 bg-destructive/10 text-destructive rounded-md">
+          <p className="font-semibold">Error:</p>
+          <p>{error.message}</p>
+        </div>
+      )}
     </Form>
   )
 }
