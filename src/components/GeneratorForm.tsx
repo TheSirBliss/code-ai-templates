@@ -1,4 +1,3 @@
-
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
@@ -21,6 +20,7 @@ import { Loader2 } from "lucide-react"
 import { useState } from "react"
 import { Concept } from "@/types/Concept"
 import { ConceptList } from "./ConceptList"
+import { User } from "@supabase/supabase-js"
 
 const formSchema = z.object({
   businessType: z.string().min(2, {
@@ -37,7 +37,7 @@ const formSchema = z.object({
   }),
 })
 
-export function GeneratorForm() {
+export function GeneratorForm({ user }: { user: User }) {
   const [concepts, setConcepts] = useState<Concept[]>([]);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -48,13 +48,32 @@ export function GeneratorForm() {
       palette: "",
       pages: "",
     },
-  })
+  });
 
   const { mutate, isPending, error } = useMutation({
-    mutationFn: (values: z.infer<typeof formSchema>) => {
-      return supabase.functions.invoke('generate-site-ideas', {
+    mutationFn: async (values: z.infer<typeof formSchema>) => {
+      const response = await supabase.functions.invoke('generate-site-ideas', {
         body: values,
-      })
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+      
+      const conceptsToSave = response.data?.concepts || null;
+
+      const { error: dbError } = await supabase
+        .from('generations')
+        .insert({ user_id: user.id, prompt: values, concepts: conceptsToSave });
+
+      if (dbError) {
+        console.error("DB insert error:", dbError);
+        toast.warning("Could not save your generation.", {
+          description: "Don't worry, you can still see the concepts below."
+        });
+      }
+
+      return response;
     },
     onSuccess: (response) => {
       if (response.error) {
@@ -76,7 +95,7 @@ export function GeneratorForm() {
         });
         setConcepts([]);
     },
-  })
+  });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     setConcepts([]);
